@@ -200,9 +200,8 @@ function renderSection(section) {
   `;
 }
 
-
 function formatRuleText(raw) {
-  const lines = raw.replace(/\r/g, "").split("\n");
+  const lines = String(raw || "").replace(/\r/g, "").split("\n");
   const out = [];
   let paragraph = [];
   let listType = null;
@@ -210,44 +209,100 @@ function formatRuleText(raw) {
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    const text = paragraph.join(" ").replace(/\s+/g, " ").trim();
-    if (text) out.push(`<p>${formatInline(text)}</p>`);
+
+    const text = paragraph
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (text) {
+      out.push(`<p>${formatInline(text)}</p>`);
+    }
+
     paragraph = [];
   };
 
   const flushList = () => {
     if (!listItems.length) return;
+
     const tag = listType === "ol" ? "ol" : "ul";
-    out.push(`<${tag}>${listItems.map(x => `<li>${formatInline(x)}</li>`).join("")}</${tag}>`);
+
+    out.push(
+      `<${tag}>` +
+      listItems.map(item => `<li>${formatInline(item)}</li>`).join("") +
+      `</${tag}>`
+    );
+
     listItems = [];
     listType = null;
   };
 
   const isNoise = line => {
-    const s = line.trim();
-    return !s ||
-      /^\d+$/.test(s) ||
-      /^system reference document 5\\.2\\.1$/i.test(s);
+    const text = line.trim();
+
+    // PDF page numbers and the repeated document header.
+    return (
+      !text ||
+      /^\d+$/.test(text) ||
+      /^system reference document 5\.2\.1$/i.test(text)
+    );
   };
 
   const getList = line => {
-    const s = line.trim();
-    if (/^[•●▪◦‣]\\s+/.test(s))
-      return { type: "ul", text: s.replace(/^[•●▪◦‣]\\s+/, "") };
-    if (/^[-–—]\\s+/.test(s))
-      return { type: "ul", text: s.replace(/^[-–—]\\s+/, "") };
-    const n = s.match(/^(\\d+)[.)]\\s+(.+)$/);
-    if (n) return { type: "ol", text: n[2] };
+    const text = line.trim();
+
+    if (/^[•●▪◦‣]\s+/.test(text)) {
+      return {
+        type: "ul",
+        text: text.replace(/^[•●▪◦‣]\s+/, "")
+      };
+    }
+
+    if (/^[-–—]\s+/.test(text)) {
+      return {
+        type: "ul",
+        text: text.replace(/^[-–—]\s+/, "")
+      };
+    }
+
+    const numbered = text.match(/^(\d+)[.)]\s+(.+)$/);
+
+    if (numbered) {
+      return {
+        type: "ol",
+        text: numbered[2]
+      };
+    }
+
     return null;
   };
 
   const headingLevel = line => {
-    const s = line.trim();
-    if (!s || s.length > 90) return 0;
-    if (/^(CHAPTER|PART|APPENDIX)\\b/i.test(s)) return 1;
-    if (/^[A-Z][A-Z0-9 &'’:,\\-]{2,}$/.test(s)) return 2;
-    if (/^[A-Z][A-Za-z0-9 &'’:,\\-]+$/.test(s) && !/[.!?]$/.test(s) && s.length < 65)
+    const text = line.trim();
+
+    if (!text || text.length > 90) {
+      return 0;
+    }
+
+    // Major document headings.
+    if (/^(CHAPTER|PART|APPENDIX)\b/i.test(text)) {
+      return 1;
+    }
+
+    // Short all-caps headings.
+    if (/^[A-Z][A-Z0-9 &'’:,/\-]{2,}$/.test(text)) {
+      return 2;
+    }
+
+    // Short title-case headings, but don't turn sentences into headings.
+    if (
+      /^[A-Z][A-Za-z0-9 &'’:,/\-]+$/.test(text) &&
+      !/[.!?]$/.test(text) &&
+      text.length < 65
+    ) {
       return 3;
+    }
+
     return 0;
   };
 
@@ -260,21 +315,30 @@ function formatRuleText(raw) {
       continue;
     }
 
-    if (isNoise(line)) continue;
+    if (isNoise(line)) {
+      continue;
+    }
 
     const list = getList(line);
+
     if (list) {
       flushParagraph();
-      if (listType && listType !== list.type) flushList();
+
+      if (listType && listType !== list.type) {
+        flushList();
+      }
+
       listType = list.type;
       listItems.push(list.text);
       continue;
     }
 
     const level = headingLevel(line);
+
     if (level) {
       flushParagraph();
       flushList();
+
       out.push(`<h${level}>${formatInline(line)}</h${level}>`);
       continue;
     }
@@ -284,13 +348,16 @@ function formatRuleText(raw) {
 
   flushParagraph();
   flushList();
-  return out.join("\\n");
+
+  return out.join("\n");
 }
 
 function formatInline(text) {
+  // Escape source text first so the PDF can never inject HTML.
+  // Then safely support simple **bold** and *italic* markers if present.
   return esc(text)
-    .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
-    .replace(/\\*(.+?)\\*/g, "<em>$1</em>");
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>");
 }
 
 function renderPage(num) {
