@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>D&D Rules & Homebrew</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">D&D Rules & Homebrew</a>
+    <div class="top-actions">
+      <input id="search" type="search" placeholder="Search rules..." aria-label="Search rules">
+      <button id="new-page">+ New Homebrew</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside id="sidebar" class="sidebar"></aside>
+    <main id="content" class="content"></main>
+  </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <button id="close-modal" class="close">×</button>
+      <h2>New Homebrew Page</h2>
+      <label>Title<input id="brew-title" placeholder="My New Spell"></label>
+      <label>Category
+        <select id="brew-category">
+          <option>Homebrew</option>
+          <option>Classes</option>
+          <option>Monsters</option>
+          <option>Spells</option>
+          <option>Items</option>
+          <option>Rules</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label>Content<textarea id="brew-content" rows="12" placeholder="Write your homebrew here..."></textarea></label>
+      <div class="modal-actions">
+        <button id="cancel-page">Cancel</button>
+        <button id="save-page" class="primary">Create Page</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
