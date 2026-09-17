@@ -200,6 +200,99 @@ function renderSection(section) {
   `;
 }
 
+
+function formatRuleText(raw) {
+  const lines = raw.replace(/\r/g, "").split("\n");
+  const out = [];
+  let paragraph = [];
+  let listType = null;
+  let listItems = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    const text = paragraph.join(" ").replace(/\s+/g, " ").trim();
+    if (text) out.push(`<p>${formatInline(text)}</p>`);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    const tag = listType === "ol" ? "ol" : "ul";
+    out.push(`<${tag}>${listItems.map(x => `<li>${formatInline(x)}</li>`).join("")}</${tag}>`);
+    listItems = [];
+    listType = null;
+  };
+
+  const isNoise = line => {
+    const s = line.trim();
+    return !s ||
+      /^\d+$/.test(s) ||
+      /^system reference document 5\\.2\\.1$/i.test(s);
+  };
+
+  const getList = line => {
+    const s = line.trim();
+    if (/^[•●▪◦‣]\\s+/.test(s))
+      return { type: "ul", text: s.replace(/^[•●▪◦‣]\\s+/, "") };
+    if (/^[-–—]\\s+/.test(s))
+      return { type: "ul", text: s.replace(/^[-–—]\\s+/, "") };
+    const n = s.match(/^(\\d+)[.)]\\s+(.+)$/);
+    if (n) return { type: "ol", text: n[2] };
+    return null;
+  };
+
+  const headingLevel = line => {
+    const s = line.trim();
+    if (!s || s.length > 90) return 0;
+    if (/^(CHAPTER|PART|APPENDIX)\\b/i.test(s)) return 1;
+    if (/^[A-Z][A-Z0-9 &'’:,\\-]{2,}$/.test(s)) return 2;
+    if (/^[A-Z][A-Za-z0-9 &'’:,\\-]+$/.test(s) && !/[.!?]$/.test(s) && s.length < 65)
+      return 3;
+    return 0;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (isNoise(line)) continue;
+
+    const list = getList(line);
+    if (list) {
+      flushParagraph();
+      if (listType && listType !== list.type) flushList();
+      listType = list.type;
+      listItems.push(list.text);
+      continue;
+    }
+
+    const level = headingLevel(line);
+    if (level) {
+      flushParagraph();
+      flushList();
+      out.push(`<h${level}>${formatInline(line)}</h${level}>`);
+      continue;
+    }
+
+    paragraph.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+  return out.join("\\n");
+}
+
+function formatInline(text) {
+  return esc(text)
+    .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
+    .replace(/\\*(.+?)\\*/g, "<em>$1</em>");
+}
+
 function renderPage(num) {
   const p = rules.pages.find(
     x => x.page === num
@@ -211,14 +304,7 @@ function renderPage(num) {
 
   renderSidebar(p.section);
 
-  const text = p.text
-    .split("\n")
-    .map(line => `
-      <p class="sr-line">
-        ${esc(line)}
-      </p>
-    `)
-    .join("");
+  const formatted = formatRuleText(p.text);
 
   $("#content").innerHTML = `
     <div class="hero">
@@ -239,7 +325,7 @@ function renderPage(num) {
         Source page ${p.page}
       </span>
 
-      ${text}
+      ${formatted}
 
     </article>
   `;
