@@ -339,21 +339,15 @@ function renderEntity(category, slug) {
     </a>
   `).join("");
 
-  const pageBlocks = pages.map(p => {
-    const text = p.text.split("\n").map(line => `
-      <p class="sr-line">${esc(line)}</p>
-    `).join("");
-
-    return `
-      <section class="entity-source-page">
-        <div class="entity-source-heading">
-          <h2>Source Page ${p.page}</h2>
-          <a href="#/page/${p.page}">Open source view →</a>
-        </div>
-        ${text}
-      </section>
-    `;
-  }).join("");
+  const pageBlocks = pages.map(p => `
+    <section class="entity-source-page">
+      <div class="entity-source-heading">
+        <h2>Source Page ${p.page}</h2>
+        <a href="#/page/${p.page}">Open source view →</a>
+      </div>
+      ${renderRichSourceText(p.text)}
+    </section>
+  `).join("");
 
   $("#content").innerHTML = `
     <div class="hero entity-hero">
@@ -372,8 +366,8 @@ function renderEntity(category, slug) {
       <div class="entity-notice">
         <strong>Source-backed entry</strong>
         <span>
-          This page reorganizes the existing indexed source pages without
-          changing their text.
+          This page reorganizes the indexed SRD source text into a
+          readable reference layout. The source wording is preserved.
         </span>
       </div>
 
@@ -551,6 +545,357 @@ function renderSection(section) {
   `;
 }
 
+
+const MAJOR_HEADINGS = new Set([
+  "Classes",
+  "Character Origins",
+  "Character Backgrounds",
+  "Parts of a Background",
+  "Background Descriptions",
+  "Character Species",
+  "Parts of a Species",
+  "Species Descriptions",
+  "Feats",
+  "Feat Descriptions",
+  "Parts of a Feat",
+  "Origin Feats",
+  "General Feats",
+  "Fighting Style Feats",
+  "Epic Boon Feats",
+  "Rules Glossary",
+  "Equipment",
+  "Magic Items",
+  "Spells",
+  "Monster Descriptions",
+  "Actions",
+  "Bonus Actions",
+  "Reactions",
+  "Traits",
+  "Legendary Actions",
+  "Lair Actions",
+  "Challenge Rating",
+  "Experience Points"
+]);
+
+const STAT_LABELS = new Set([
+  "Ability Scores",
+  "Feat",
+  "Skill Proficiencies",
+  "Tool Proficiency",
+  "Equipment",
+  "Creature Type",
+  "Size",
+  "Speed",
+  "Primary Ability",
+  "Hit Point Die",
+  "Saving Throw Proficiencies",
+  "Saving Throw",
+  "Weapon Proficiencies",
+  "Armor Training",
+  "Starting Equipment",
+  "Prerequisite",
+  "Category",
+  "Benefit",
+  "Repeatable",
+  "Casting Time",
+  "Range",
+  "Components",
+  "Duration",
+  "Damage",
+  "Condition",
+  "Hit Points",
+  "Armor Class",
+  "Challenge"
+]);
+
+const STRUCTURED_NAMES = new Set(
+  Object.values(STRUCTURED)
+    .flat()
+    .map(x => x[1])
+);
+
+function cleanSourceLine(line) {
+  return String(line || "")
+    .replace(/\u00ad/g, "")
+    .replace(/\u200b/g, "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inlineRich(text) {
+  let out = esc(text);
+
+  // Bold common mechanical labels inside rules text.
+  out = out.replace(
+    /\b(Attack Roll|Hit|Damage|Saving Throw|DC|Melee Attack Roll|Ranged Attack Roll|Spell Attack Roll|Area of Effect):/g,
+    "<strong>$1:</strong>"
+  );
+
+  // Preserve the emphasis convention used throughout the SRD for named
+  // rules features: "Feature Name. Description..."
+  return out;
+}
+
+function isHeading(line, nextLine = "", prevLine = "") {
+  const s = cleanSourceLine(line);
+  const next = cleanSourceLine(nextLine);
+  const prev = cleanSourceLine(prevLine);
+  if (!s) return false;
+  if (MAJOR_HEADINGS.has(s)) return true;
+  if (STRUCTURED_NAMES.has(s)) return true;
+
+  if (/^Level \d+:/i.test(s)) return true;
+  if (/^Core .+ Traits$/i.test(s)) return true;
+  if (/^[A-Z][A-Za-z’'&-]+ Features$/.test(s)) return true;
+
+  // Short, title-like standalone headings.
+  if (
+    s.length <= 48 &&
+    !/[.!?:;,]$/.test(s) &&
+    /^[A-Z][A-Za-z0-9’'&()\/\-]*(?:\s+[A-Z][A-Za-z0-9’'&()\/\-]*)*$/.test(s) &&
+    next.length > 35 &&
+    prev.length > 0
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function isFeatureLine(line) {
+  const raw = String(line || "");
+  const s = cleanSourceLine(raw);
+  if (!s) return false;
+
+  // PDF extraction marks many SRD feature paragraphs with a tab.
+  if (/^\t/.test(raw) && /^[A-Z][^.\n]{1,60}\.\s+/.test(s)) return true;
+
+  // Some indented subfeatures lose the tab in extraction.
+  if (
+    /^[A-Z][A-Za-z’'’\-]+(?:\s+[A-Z][A-Za-z’'’\-]+){0,5}\.\s+/.test(s) &&
+    s.length < 180
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function splitFeatureLine(s) {
+  const m = s.match(/^(.+?\.)\s+(.*)$/);
+  if (!m) return [s, ""];
+  return [m[1], m[2]];
+}
+
+function isStatLine(s) {
+  const m = s.match(/^([^:]{2,32}):\s*(.+)$/);
+  return !!m && STAT_LABELS.has(m[1].trim());
+}
+
+/*
+  The PDF-to-text export flattens a few tables into a predictable sequence.
+  These definitions rebuild the tables without changing any source wording.
+*/
+const SOURCE_TABLES = {
+  "Draconic Ancestors": {
+    headers: ["Dragon", "Damage Type", "Dragon", "Damage Type"],
+    rows: [
+      ["Black", "Acid", "Gold", "Fire"],
+      ["Blue", "Lightning", "Green", "Poison"],
+      ["Brass", "Fire", "Red", "Fire"],
+      ["Bronze", "Lightning", "Silver", "Cold"],
+      ["Copper", "Acid", "White", "Cold"]
+    ]
+  },
+
+  "Elven Lineages": {
+    headers: ["Lineage", "Level 1", "Level 3", "Level 5"],
+    rows: [
+      ["Drow", null, "Faerie Fire", "Darkness"],
+      ["High Elf", null, "Detect Magic", "Misty Step"],
+      ["Wood Elf", null, "Longstrider", "Pass without Trace"]
+    ]
+  },
+
+  "Fiendish Legacies": {
+    headers: ["Legacy", "Level 1", "Level 3", "Level 5"],
+    rows: [
+      ["Abyssal", null, "Ray of Sickness", "Hold Person"],
+      ["Chthonic", null, "False Life", "Ray of Enfeeblement"],
+      ["Infernal", null, "Hellish Rebuke", "Darkness"]
+    ]
+  }
+};
+
+function findTableAt(lines, index, title) {
+  const def = SOURCE_TABLES[title];
+  if (!def) return null;
+
+  if (cleanSourceLine(lines[index]) !== title) return null;
+
+  let i = index + 1;
+
+  // Skip blank lines and the flattened header cells.
+  const headerCount = def.headers.length;
+  let seen = 0;
+  while (i < lines.length && seen < headerCount) {
+    const s = cleanSourceLine(lines[i]);
+    if (s) seen++;
+    i++;
+  }
+
+  const rows = [];
+
+  if (title === "Draconic Ancestors") {
+    // Five rows, four cells per row, one line per cell.
+    const values = [];
+    while (i < lines.length && values.length < 20) {
+      const s = cleanSourceLine(lines[i]);
+      if (!s) { i++; continue; }
+      if (/^\t/.test(lines[i])) break;
+      values.push(s);
+      i++;
+    }
+    for (let n = 0; n + 3 < values.length && rows.length < 5; n += 4) {
+      rows.push(values.slice(n, n + 4));
+    }
+  } else {
+    // Level-1 cells can wrap; Level-3 and Level-5 entries are single lines.
+    const labels = def.rows.map(r => r[0]);
+    for (const rowDef of def.rows) {
+      const start = i;
+      while (i < lines.length && cleanSourceLine(lines[i]) !== rowDef[0]) i++;
+      if (i >= lines.length) return null;
+      i++; // row label
+
+      const nextLabel = labels[labels.indexOf(rowDef[0]) + 1];
+      const cellLines = [];
+      while (i < lines.length && (!nextLabel || cleanSourceLine(lines[i]) !== nextLabel)) {
+        const s = cleanSourceLine(lines[i]);
+        if (s) cellLines.push(s);
+        i++;
+      }
+
+      if (cellLines.length < 3) return null;
+      rows.push([
+        rowDef[0],
+        cellLines.slice(0, -2).join(" "),
+        cellLines[cellLines.length - 2],
+        cellLines[cellLines.length - 1]
+      ]);
+    }
+  }
+
+  if (!rows.length) return null;
+
+  // The parser consumed the table. Return the next source-line index.
+  return { html: renderSourceTable(title, def.headers, rows), nextIndex: i };
+}
+
+function renderSourceTable(title, headers, rows) {
+  return `
+    <div class="source-table-wrap">
+      <table class="source-table">
+        <caption>${esc(title)}</caption>
+        <thead>
+          <tr>
+            ${headers.map(h => `<th scope="col">${esc(h)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr>
+              ${row.map((cell, index) => `
+                <td class="${index === 0 ? "table-label" : ""}">
+                  ${inlineRich(cell || "—")}
+                </td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderRichSourceText(text) {
+  const rawLines = String(text || "").split("\n");
+  const blocks = [];
+  let paragraph = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    const joined = paragraph.join(" ").replace(/\s+/g, " ").trim();
+    if (joined) {
+      blocks.push(`<p class="source-paragraph">${inlineRich(joined)}</p>`);
+    }
+    paragraph = [];
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i];
+    const s = cleanSourceLine(raw);
+
+    // Remove PDF running header/footer from the web presentation.
+    if (!s || s === "System Reference Document 5.2.1" || /^\d+$/.test(s)) {
+      flushParagraph();
+      continue;
+    }
+
+    const table = findTableAt(rawLines, i, s);
+    if (table) {
+      flushParagraph();
+      blocks.push(table.html);
+      i = table.nextIndex - 1;
+      continue;
+    }
+
+    if (isHeading(s, rawLines[i + 1] || "", rawLines[i - 1] || "")) {
+      flushParagraph();
+      const level = /^Level \d+:/i.test(s) ? 3 : (
+        MAJOR_HEADINGS.has(s) || STRUCTURED_NAMES.has(s) ? 2 : 3
+      );
+      blocks.push(`<h${level} class="source-heading source-heading-${level}">${esc(s)}</h${level}>`);
+      continue;
+    }
+
+    if (isStatLine(s)) {
+      flushParagraph();
+      const m = s.match(/^([^:]{2,32}):\s*(.+)$/);
+      blocks.push(`
+        <div class="source-stat">
+          <strong>${esc(m[1])}</strong>
+          <span>${inlineRich(m[2])}</span>
+        </div>
+      `);
+      continue;
+    }
+
+    if (/^•\s*/.test(s)) {
+      flushParagraph();
+      blocks.push(`<div class="source-bullet">${inlineRich(s.replace(/^•\s*/, ""))}</div>`);
+      continue;
+    }
+
+    if (/^\t/.test(raw) || isFeatureLine(raw)) {
+      flushParagraph();
+      const [label, body] = splitFeatureLine(s);
+      blocks.push(`
+        <p class="source-feature">
+          <strong>${esc(label)}</strong>${body ? ` ${inlineRich(body)}` : ""}
+        </p>
+      `);
+      continue;
+    }
+
+    paragraph.push(s);
+  }
+
+  flushParagraph();
+  return blocks.join("\n");
+}
+
 function renderPage(num) {
   const p = rules.pages.find(
     x => x.page === num
@@ -562,36 +907,27 @@ function renderPage(num) {
 
   renderSidebar(p.section);
 
-  const text = p.text
-    .split("\n")
-    .map(line => `
-      <p class="sr-line">
-        ${esc(line)}
-      </p>
-    `)
-    .join("");
-
   $("#content").innerHTML = `
-    <div class="hero">
-
-      <a href="#/section/${encodeURIComponent(p.section)}">
+    <div class="hero source-hero">
+      <a class="back-link" href="#/section/${encodeURIComponent(p.section)}">
         ← ${esc(p.section)}
       </a>
 
-      <h1>
-        SRD Page ${p.page}
-      </h1>
-
+      <div class="eyebrow">${esc(p.section)}</div>
+      <h1>Source Page ${p.page}</h1>
+      <p class="muted">
+        Clean reading view of SRD 5.2.1 source page ${p.page}.
+      </p>
     </div>
 
-    <article class="rule-page">
+    <article class="rule-page source-page">
+      <div class="source-page-toolbar">
+        <span>SRD 5.2.1</span>
+        <a href="#/page/${Math.max(1, p.page - 1)}">← Previous</a>
+        <a href="#/page/${p.page + 1}">Next →</a>
+      </div>
 
-      <span class="page-number">
-        Source page ${p.page}
-      </span>
-
-      ${text}
-
+      ${renderRichSourceText(p.text)}
     </article>
   `;
 }
