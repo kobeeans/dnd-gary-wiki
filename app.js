@@ -201,7 +201,18 @@ function renderSection(section) {
 }
 
 function formatRuleText(raw) {
-  const lines = String(raw || "").replace(/\r/g, "").split("\n");
+  // Normalize the extracted PDF text before putting it into HTML.
+  // Some extracted versions can contain literal HTML-looking tags or
+  // the two characters "\n". Those are treated as plain source text.
+  let source = String(raw || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n/g, "\n")
+    .replace(/<\/?strong>/gi, "")
+    .replace(/<\/?em>/gi, "")
+    .replace(/<\/?b>/gi, "")
+    .replace(/<\/?i>/gi, "");
+
+  const lines = source.replace(/\r/g, "").split("\n");
   const out = [];
   let paragraph = [];
   let listType = null;
@@ -216,7 +227,7 @@ function formatRuleText(raw) {
       .trim();
 
     if (text) {
-      out.push(`<p>${formatInline(text)}</p>`);
+      out.push(`<p>${esc(text)}</p>`);
     }
 
     paragraph = [];
@@ -229,23 +240,12 @@ function formatRuleText(raw) {
 
     out.push(
       `<${tag}>` +
-      listItems.map(item => `<li>${formatInline(item)}</li>`).join("") +
+      listItems.map(item => `<li>${esc(item)}</li>`).join("") +
       `</${tag}>`
     );
 
     listItems = [];
     listType = null;
-  };
-
-  const isNoise = line => {
-    const text = line.trim();
-
-    // PDF page numbers and the repeated document header.
-    return (
-      !text ||
-      /^\d+$/.test(text) ||
-      /^system reference document 5\.2\.1$/i.test(text)
-    );
   };
 
   const getList = line => {
@@ -265,45 +265,16 @@ function formatRuleText(raw) {
       };
     }
 
-    const numbered = text.match(/^(\d+)[.)]\s+(.+)$/);
+    const numbered = text.match(/^\d+[.)]\s+(.+)$/);
 
     if (numbered) {
       return {
         type: "ol",
-        text: numbered[2]
+        text: numbered[1]
       };
     }
 
     return null;
-  };
-
-  const headingLevel = line => {
-    const text = line.trim();
-
-    if (!text || text.length > 90) {
-      return 0;
-    }
-
-    // Major document headings.
-    if (/^(CHAPTER|PART|APPENDIX)\b/i.test(text)) {
-      return 1;
-    }
-
-    // Short all-caps headings.
-    if (/^[A-Z][A-Z0-9 &'’:,/\-]{2,}$/.test(text)) {
-      return 2;
-    }
-
-    // Short title-case headings, but don't turn sentences into headings.
-    if (
-      /^[A-Z][A-Za-z0-9 &'’:,/\-]+$/.test(text) &&
-      !/[.!?]$/.test(text) &&
-      text.length < 65
-    ) {
-      return 3;
-    }
-
-    return 0;
   };
 
   for (const rawLine of lines) {
@@ -315,7 +286,11 @@ function formatRuleText(raw) {
       continue;
     }
 
-    if (isNoise(line)) {
+    // Remove standalone PDF page numbers and repeated document headers.
+    if (
+      /^\d+$/.test(line) ||
+      /^system reference document 5\.2\.1$/i.test(line)
+    ) {
       continue;
     }
 
@@ -333,16 +308,6 @@ function formatRuleText(raw) {
       continue;
     }
 
-    const level = headingLevel(line);
-
-    if (level) {
-      flushParagraph();
-      flushList();
-
-      out.push(`<h${level}>${formatInline(line)}</h${level}>`);
-      continue;
-    }
-
     paragraph.push(line);
   }
 
@@ -350,14 +315,6 @@ function formatRuleText(raw) {
   flushList();
 
   return out.join("\n");
-}
-
-function formatInline(text) {
-  // Escape source text first so the PDF can never inject HTML.
-  // Then safely support simple **bold** and *italic* markers if present.
-  return esc(text)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>");
 }
 
 function renderPage(num) {
