@@ -446,3 +446,54 @@ body{
   }
   .source-table{min-width:600px}
 }
+
+/* Real structured character pages */
+.structured-entry{max-width:1080px}
+.structured-entry .table-section{margin:0 0 34px}
+.structured-entry .table-section h3{font:700 26px/1.2 Georgia,"Times New Roman",serif;margin:0 0 12px;color:#2b2621}
+.structured-entry .table-wrap{overflow-x:auto;border:1px solid #cfc4b7;border-radius:9px;background:#fff;box-shadow:0 3px 12px #0000000a}
+.structured-entry table{width:100%;border-collapse:collapse;min-width:620px;font-size:14px}
+.structured-entry th{padding:11px 12px;background:#eee8df;color:#433b33;text-align:left;font:800 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;text-transform:uppercase;letter-spacing:.06em;border-bottom:2px solid #cfc4b7}
+.structured-entry td{padding:11px 12px;vertical-align:top;line-height:1.5;border-bottom:1px solid #e4ddd4}
+.structured-entry tbody tr:nth-child(even){background:#fcfaf7}
+.structured-entry tbody tr:last-child td{border-bottom:0}
+.structured-entry .level-cell{font-weight:800;white-space:nowrap}
+.core-traits table,.species-stats table{min-width:0}
+.core-traits td:first-child,.species-stats td:first-child{width:190px;font-weight:800;color:#3d352e}
+.class-progression table{min-width:920px}
+.class-progression th:first-child,.class-progression td:first-child{width:58px}
+.class-progression th:nth-child(2),.class-progression td:nth-child(2){width:110px}
+.class-progression td:nth-child(3){min-width:270px;font-weight:600}
+.feature-section{margin:38px 0 0}
+.feature-section>h2,.subclass-section>h2,.spell-section>h2{font:700 32px/1.18 Georgia,"Times New Roman",serif;margin:0 0 18px}
+.feature-card{background:#fff;border:1px solid #ddd5ca;border-radius:9px;margin:0 0 14px;padding:20px 22px;box-shadow:0 2px 8px #00000008}
+.feature-card .feature-level{display:block;margin:0 0 3px;color:#8b2f2f;font:800 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.09em;text-transform:uppercase}
+.feature-card h3{font:700 22px/1.25 Georgia,"Times New Roman",serif;margin:0 0 9px;color:#2d2823}
+.feature-card p{max-width:78ch;margin:8px 0;font:16px/1.68 Georgia,"Times New Roman",serif;color:#342e29}
+.feature-card p strong{font-weight:800}
+.feature-card p em{font-style:normal;font-weight:600}
+.feature-list{max-width:78ch;margin:10px 0;padding-left:25px;font:16px/1.65 Georgia,"Times New Roman",serif}
+.feature-list li{margin:5px 0}
+.feature-list li strong{font-weight:800}
+.subclass-section{margin:46px 0 0;padding:27px 0 0;border-top:3px solid #b9aea0}
+.subclass-intro{max-width:78ch;margin:0 0 18px;font:italic 16px/1.7 Georgia,"Times New Roman",serif;color:#5c534a}
+.spell-section{margin:46px 0 0;padding-top:27px;border-top:1px solid #d8cec1}
+.spell-section details{background:#fff;border:1px solid #ddd5ca;border-radius:9px;margin:10px 0;overflow:hidden}
+.spell-section summary{cursor:pointer;padding:13px 16px;font-weight:800}
+.spell-section details[open] summary{border-bottom:1px solid #ddd5ca}
+.spell-table{margin:0!important}
+.spell-table .table-wrap{border:0;border-radius:0;box-shadow:none}
+.spell-table table{min-width:560px}
+.species-stats{margin-bottom:28px}
+.species-table table{min-width:760px}
+.species-table td:first-child{font-weight:800;white-space:nowrap}
+.background-table table{min-width:0}
+.background-table td:first-child{width:190px;font-weight:800}
+.source-note{margin-top:34px;padding-top:18px;border-top:1px solid #ddd5ca;color:#756d64;font-size:13px}
+@media(max-width:800px){
+  .structured-entry table{font-size:13px}
+  .structured-entry .table-wrap{border-radius:7px}
+  .feature-card{padding:17px 18px}
+  .feature-card p,.feature-list{font-size:15px}
+  .feature-section>h2,.subclass-section>h2,.spell-section>h2{font-size:27px}
+}
