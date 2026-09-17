@@ -697,6 +697,10 @@ function isStatLine(s) {
   The PDF-to-text export flattens a few tables into a predictable sequence.
   These definitions rebuild the tables without changing any source wording.
 */
+/*
+  Tables that are flattened by the PDF text extractor are rebuilt here.
+  The cell text is taken directly from the supplied SRD source pages.
+*/
 const SOURCE_TABLES = {
   "Draconic Ancestors": {
     headers: ["Dragon", "Damage Type", "Dragon", "Damage Type"],
@@ -706,105 +710,43 @@ const SOURCE_TABLES = {
       ["Brass", "Fire", "Red", "Fire"],
       ["Bronze", "Lightning", "Silver", "Cold"],
       ["Copper", "Acid", "White", "Cold"]
-    ]
+    ],
+    endMarker: "White"
   },
 
   "Elven Lineages": {
     headers: ["Lineage", "Level 1", "Level 3", "Level 5"],
     rows: [
-      ["Drow", null, "Faerie Fire", "Darkness"],
-      ["High Elf", null, "Detect Magic", "Misty Step"],
-      ["Wood Elf", null, "Longstrider", "Pass without Trace"]
-    ]
+      ["Drow", "The range of your Darkvision increases to 120 feet. You also know the Dancing Lights cantrip.", "Faerie Fire", "Darkness"],
+      ["High Elf", "You know the Prestidigitation cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list.", "Detect Magic", "Misty Step"],
+      ["Wood Elf", "Your Speed increases to 35 feet. You also know the Druidcraft cantrip.", "Longstrider", "Pass without Trace"]
+    ],
+    endMarker: "Pass without Trace"
   },
 
   "Fiendish Legacies": {
     headers: ["Legacy", "Level 1", "Level 3", "Level 5"],
     rows: [
-      ["Abyssal", null, "Ray of Sickness", "Hold Person"],
-      ["Chthonic", null, "False Life", "Ray of Enfeeblement"],
-      ["Infernal", null, "Hellish Rebuke", "Darkness"]
-    ]
+      ["Abyssal", "You have Resistance to Poison damage. You also know the Poison Spray cantrip.", "Ray of Sickness", "Hold Person"],
+      ["Chthonic", "You have Resistance to Necrotic damage. You also know the Chill Touch cantrip.", "False Life", "Ray of Enfeeblement"],
+      ["Infernal", "You have Resistance to Fire damage. You also know the Fire Bolt cantrip.", "Hellish Rebuke", "Darkness"]
+    ],
+    endMarker: "Darkness"
   }
 };
 
-function findTableAt(lines, index, title) {
-  const def = SOURCE_TABLES[title];
-  if (!def) return null;
-
-  if (cleanSourceLine(lines[index]) !== title) return null;
-
-  let i = index + 1;
-
-  // Skip blank lines and the flattened header cells.
-  const headerCount = def.headers.length;
-  let seen = 0;
-  while (i < lines.length && seen < headerCount) {
-    const s = cleanSourceLine(lines[i]);
-    if (s) seen++;
-    i++;
-  }
-
-  const rows = [];
-
-  if (title === "Draconic Ancestors") {
-    // Five rows, four cells per row, one line per cell.
-    const values = [];
-    while (i < lines.length && values.length < 20) {
-      const s = cleanSourceLine(lines[i]);
-      if (!s) { i++; continue; }
-      if (/^\t/.test(lines[i])) break;
-      values.push(s);
-      i++;
-    }
-    for (let n = 0; n + 3 < values.length && rows.length < 5; n += 4) {
-      rows.push(values.slice(n, n + 4));
-    }
-  } else {
-    // Level-1 cells can wrap; Level-3 and Level-5 entries are single lines.
-    const labels = def.rows.map(r => r[0]);
-    for (const rowDef of def.rows) {
-      const start = i;
-      while (i < lines.length && cleanSourceLine(lines[i]) !== rowDef[0]) i++;
-      if (i >= lines.length) return null;
-      i++; // row label
-
-      const nextLabel = labels[labels.indexOf(rowDef[0]) + 1];
-      const cellLines = [];
-      while (i < lines.length && (!nextLabel || cleanSourceLine(lines[i]) !== nextLabel)) {
-        const s = cleanSourceLine(lines[i]);
-        if (s) cellLines.push(s);
-        i++;
-      }
-
-      if (cellLines.length < 3) return null;
-      rows.push([
-        rowDef[0],
-        cellLines.slice(0, -2).join(" "),
-        cellLines[cellLines.length - 2],
-        cellLines[cellLines.length - 1]
-      ]);
-    }
-  }
-
-  if (!rows.length) return null;
-
-  // The parser consumed the table. Return the next source-line index.
-  return { html: renderSourceTable(title, def.headers, rows), nextIndex: i };
-}
-
-function renderSourceTable(title, headers, rows) {
+function renderSourceTable(title, def) {
   return `
     <div class="source-table-wrap">
       <table class="source-table">
         <caption>${esc(title)}</caption>
         <thead>
           <tr>
-            ${headers.map(h => `<th scope="col">${esc(h)}</th>`).join("")}
+            ${def.headers.map(h => `<th scope="col">${esc(h)}</th>`).join("")}
           </tr>
         </thead>
         <tbody>
-          ${rows.map(row => `
+          ${def.rows.map(row => `
             <tr>
               ${row.map((cell, index) => `
                 <td class="${index === 0 ? "table-label" : ""}">
@@ -819,8 +761,105 @@ function renderSourceTable(title, headers, rows) {
   `;
 }
 
+function findTableAt(lines, index, title) {
+  const def = SOURCE_TABLES[title];
+  if (!def || cleanSourceLine(lines[index]) !== title) return null;
+
+  let endIndex = index + 1;
+  while (endIndex < lines.length) {
+    if (cleanSourceLine(lines[endIndex]) === def.endMarker) {
+      const consume = title === "Draconic Ancestors" ? 2 : 1;
+      return {
+        html: renderSourceTable(title, def),
+        nextIndex: endIndex + consume
+      };
+    }
+    endIndex++;
+  }
+
+  return null;
+}
+
+function isFeatureStart(s) {
+  /*
+    SRD feature names are generally extracted as:
+      Feature Name. Description...
+      Feature Name (Parenthetical). Description...
+    This deliberately requires title-like words so normal prose such as
+    "When you..." is not mistaken for a feature.
+  */
+  return /^[A-Z][A-Za-z’'&-]*(?:\s+[A-Z][A-Za-z’'&-]*){0,7}(?:\s+\([^)]{1,45}\))?\.\s+/.test(s);
+}
+
+function splitFeatureLine(s) {
+  const m = s.match(/^(.+?\.)\s+(.*)$/);
+  if (!m) return [s, ""];
+  return [m[1], m[2]];
+}
+
+function isHeading(line, nextLine = "", prevLine = "") {
+  const s = cleanSourceLine(line);
+  if (!s) return false;
+
+  if (MAJOR_HEADINGS.has(s) || STRUCTURED_NAMES.has(s)) return true;
+  if (/^Core .+ Traits$/i.test(s)) return true;
+  if (/^[A-Z][A-Za-z’'&-]+ Features$/.test(s)) return true;
+
+  /*
+    Small section labels that occur repeatedly in the SRD.
+    Keep this list explicit; generic "all title-case lines are headings"
+    produces false positives such as table columns.
+  */
+  const commonHeadings = new Set([
+    "Species Descriptions",
+    "Class Features",
+    "Subclass Features",
+    "Level 1",
+    "Level 2",
+    "Level 3",
+    "Level 4",
+    "Level 5",
+    "Level 6",
+    "Level 7",
+    "Level 8",
+    "Level 9",
+    "Level 10",
+    "Level 11",
+    "Level 12",
+    "Level 13",
+    "Level 14",
+    "Level 15",
+    "Level 16",
+    "Level 17",
+    "Level 18",
+    "Level 19",
+    "Level 20",
+    "General Rules",
+    "Subclass",
+    "Multiclassing",
+    "Creating a Character",
+    "Building a Character",
+    "Ability Scores",
+    "Proficiencies",
+    "Equipment",
+    "Starting Equipment"
+  ]);
+
+  return commonHeadings.has(s);
+}
+
+function isStatLine(s) {
+  const m = s.match(/^([^:]{2,40}):\s*(.+)$/);
+  return !!m && STAT_LABELS.has(m[1].trim());
+}
+
+function isBulletLine(s) {
+  return /^•\s+/.test(s) || /^[-–]\s+/.test(s);
+}
+
 function renderRichSourceText(text) {
   const rawLines = String(text || "").split("\n");
+  const lines = rawLines.map(cleanSourceLine);
   const blocks = [];
   let paragraph = [];
 
@@ -833,17 +872,25 @@ function renderRichSourceText(text) {
     paragraph = [];
   };
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const raw = rawLines[i];
-    const s = cleanSourceLine(raw);
+  const nextMeaningful = (from) => {
+    for (let j = from; j < lines.length; j++) {
+      if (lines[j] && lines[j] !== "System Reference Document 5.2.1" && !/^\d+$/.test(lines[j])) {
+        return lines[j];
+      }
+    }
+    return "";
+  };
 
-    // Remove PDF running header/footer from the web presentation.
+  for (let i = 0; i < lines.length; i++) {
+    const s = lines[i];
+    const raw = rawLines[i];
+
     if (!s || s === "System Reference Document 5.2.1" || /^\d+$/.test(s)) {
       flushParagraph();
       continue;
     }
 
-    const table = findTableAt(rawLines, i, s);
+    const table = findTableAt(lines, i, s);
     if (table) {
       flushParagraph();
       blocks.push(table.html);
@@ -851,18 +898,23 @@ function renderRichSourceText(text) {
       continue;
     }
 
-    if (isHeading(s, rawLines[i + 1] || "", rawLines[i - 1] || "")) {
+    if (isHeading(s, nextMeaningful(i + 1), i > 0 ? lines[i - 1] : "")) {
       flushParagraph();
-      const level = /^Level \d+:/i.test(s) ? 3 : (
-        MAJOR_HEADINGS.has(s) || STRUCTURED_NAMES.has(s) ? 2 : 3
-      );
+
+      const level =
+        STRUCTURED_NAMES.has(s) ? 2 :
+        MAJOR_HEADINGS.has(s) ? 2 :
+        /^Core .+ Traits$/i.test(s) ? 3 :
+        /^[A-Z][A-Za-z’'&-]+ Features$/.test(s) ? 3 :
+        3;
+
       blocks.push(`<h${level} class="source-heading source-heading-${level}">${esc(s)}</h${level}>`);
       continue;
     }
 
     if (isStatLine(s)) {
       flushParagraph();
-      const m = s.match(/^([^:]{2,32}):\s*(.+)$/);
+      const m = s.match(/^([^:]{2,40}):\s*(.+)$/);
       blocks.push(`
         <div class="source-stat">
           <strong>${esc(m[1])}</strong>
@@ -872,20 +924,50 @@ function renderRichSourceText(text) {
       continue;
     }
 
-    if (/^•\s*/.test(s)) {
+    if (isBulletLine(s)) {
       flushParagraph();
-      blocks.push(`<div class="source-bullet">${inlineRich(s.replace(/^•\s*/, ""))}</div>`);
+      blocks.push(`<div class="source-bullet">${inlineRich(s.replace(/^(?:•|[-–])\s+/, ""))}</div>`);
       continue;
     }
 
-    if (/^\t/.test(raw) || isFeatureLine(raw)) {
+    if (isFeatureStart(s)) {
       flushParagraph();
-      const [label, body] = splitFeatureLine(s);
+
+      const [label, firstBody] = splitFeatureLine(s);
+      const body = [firstBody];
+
+      /*
+        Join wrapped lines belonging to this feature until another feature,
+        heading, table, stat line, or bullet begins.
+      */
+      let j = i + 1;
+      while (j < lines.length) {
+        const next = lines[j];
+        if (!next || next === "System Reference Document 5.2.1" || /^\d+$/.test(next)) {
+          j++;
+          continue;
+        }
+        if (
+          SOURCE_TABLES[next] ||
+          isHeading(next, lines[j + 1] || "", lines[j - 1] || "") ||
+          isStatLine(next) ||
+          isBulletLine(next) ||
+          isFeatureStart(next)
+        ) {
+          break;
+        }
+        body.push(next);
+        j++;
+      }
+
       blocks.push(`
-        <p class="source-feature">
-          <strong>${esc(label)}</strong>${body ? ` ${inlineRich(body)}` : ""}
-        </p>
+        <div class="source-feature">
+          <div class="feature-label">${esc(label)}</div>
+          <div class="feature-body">${inlineRich(body.join(" ").replace(/\s+/g, " ").trim())}</div>
+        </div>
       `);
+
+      i = j - 1;
       continue;
     }
 
