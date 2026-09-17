@@ -67,6 +67,339 @@ function renderSidebar(activeSection) {
   `;
 }
 
+const STRUCTURED = {
+  "classes": [
+    [
+      "barbarian",
+      "Barbarian",
+      28,
+      30
+    ],
+    [
+      "bard",
+      "Bard",
+      31,
+      35
+    ],
+    [
+      "cleric",
+      "Cleric",
+      36,
+      40
+    ],
+    [
+      "druid",
+      "Druid",
+      41,
+      46
+    ],
+    [
+      "fighter",
+      "Fighter",
+      47,
+      48
+    ],
+    [
+      "monk",
+      "Monk",
+      49,
+      52
+    ],
+    [
+      "paladin",
+      "Paladin",
+      53,
+      56
+    ],
+    [
+      "ranger",
+      "Ranger",
+      57,
+      60
+    ],
+    [
+      "rogue",
+      "Rogue",
+      61,
+      63
+    ],
+    [
+      "sorcerer",
+      "Sorcerer",
+      64,
+      69
+    ],
+    [
+      "warlock",
+      "Warlock",
+      70,
+      76
+    ],
+    [
+      "wizard",
+      "Wizard",
+      77,
+      82
+    ]
+  ],
+  "species": [
+    [
+      "dragonborn",
+      "Dragonborn",
+      84,
+      84
+    ],
+    [
+      "dwarf",
+      "Dwarf",
+      84,
+      84
+    ],
+    [
+      "elf",
+      "Elf",
+      84,
+      85
+    ],
+    [
+      "gnome",
+      "Gnome",
+      85,
+      85
+    ],
+    [
+      "goliath",
+      "Goliath",
+      85,
+      86
+    ],
+    [
+      "halfling",
+      "Halfling",
+      86,
+      86
+    ],
+    [
+      "human",
+      "Human",
+      86,
+      86
+    ],
+    [
+      "orc",
+      "Orc",
+      86,
+      86
+    ],
+    [
+      "tiefling",
+      "Tiefling",
+      86,
+      86
+    ]
+  ],
+  "backgrounds": [
+    [
+      "acolyte",
+      "Acolyte",
+      83,
+      83
+    ],
+    [
+      "criminal",
+      "Criminal",
+      83,
+      83
+    ],
+    [
+      "sage",
+      "Sage",
+      83,
+      83
+    ],
+    [
+      "soldier",
+      "Soldier",
+      83,
+      83
+    ]
+  ]
+};
+
+function renderSidebar(activeSection, activeCategory) {
+  const sections = [...new Set(rules.pages.map(p => p.section))];
+
+  const link = (href, label, active = false) => `
+    <a class="nav-link ${active ? "active" : ""}" href="${href}">
+      ${esc(label)}
+    </a>
+  `;
+
+  $("#sidebar").innerHTML = `
+    <div class="nav-title">Rules</div>
+    ${link("#/", "Overview", !activeSection && !activeCategory)}
+
+    <div class="nav-title structured-nav-title">Character</div>
+    ${link("#/category/classes", "Classes", activeCategory === "classes")}
+    ${link("#/category/species", "Species", activeCategory === "species")}
+    ${link("#/category/backgrounds", "Backgrounds", activeCategory === "backgrounds")}
+
+    <div class="nav-title structured-nav-title">Rules Reference</div>
+    ${link("#/category/feats", "Feats", activeCategory === "feats")}
+    ${link("#/category/equipment", "Equipment", activeCategory === "equipment")}
+    ${link("#/category/spells", "Spells", activeCategory === "spells")}
+    ${link("#/category/monsters", "Monsters", activeCategory === "monsters")}
+    ${link("#/category/glossary", "Rules Glossary", activeCategory === "glossary")}
+
+    <div class="nav-title structured-nav-title">Source</div>
+    ${sections.map(s => link(
+      "#/section/" + encodeURIComponent(s),
+      s,
+      activeSection === s
+    )).join("")}
+
+    <div class="nav-title structured-nav-title">Homebrew</div>
+    ${link("#/homebrew", `My Homebrew (${homebrew.length})`)}
+
+    ${homebrew.map(p => `
+      <a class="nav-link" href="#/brew/${p.id}">
+        ${esc(p.title)}
+      </a>
+    `).join("")}
+  `;
+}
+
+function structuredEntries(category) {
+  return (STRUCTURED[category] || []).map(([slug, name, start, end]) => ({
+    slug, name, start, end
+  }));
+}
+
+function structuredCategoryTitle(category) {
+  return ({
+    classes: "Classes",
+    species: "Species",
+    backgrounds: "Backgrounds",
+    feats: "Feats",
+    equipment: "Equipment",
+    spells: "Spells",
+    monsters: "Monsters",
+    glossary: "Rules Glossary"
+  })[category] || "Rules";
+}
+
+function renderCategory(category) {
+  const entries = structuredEntries(category);
+
+  if (!entries.length) {
+    return renderSectionFallback(category);
+  }
+
+  renderSidebar(undefined, category);
+
+  $("#content").innerHTML = `
+    <div class="hero">
+      <div class="eyebrow">Character Reference</div>
+      <h1>${esc(structuredCategoryTitle(category))}</h1>
+      <p class="muted">
+        Structured pages built from the supplied SRD 5.2.1 source text.
+      </p>
+    </div>
+
+    <div class="entity-grid">
+      ${entries.map(e => `
+        <a class="entity-card" href="#/entity/${category}/${e.slug}">
+          <div class="entity-card-title">${esc(e.name)}</div>
+          <div class="entity-card-meta">
+            Source page${e.start === e.end ? "" : "s"} ${e.start}${e.end !== e.start ? "–" + e.end : ""}
+          </div>
+          <div class="entity-card-arrow">View entry →</div>
+        </a>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderEntity(category, slug) {
+  const entry = structuredEntries(category).find(e => e.slug === slug);
+
+  if (!entry) {
+    return renderHome();
+  }
+
+  renderSidebar(undefined, category);
+
+  const pages = rules.pages.filter(
+    p => p.page >= entry.start && p.page <= entry.end
+  );
+
+  const sourcePageLinks = pages.map(p => `
+    <a class="source-chip" href="#/page/${p.page}">
+      Source p. ${p.page}
+    </a>
+  `).join("");
+
+  const pageBlocks = pages.map(p => {
+    const text = p.text.split("\n").map(line => `
+      <p class="sr-line">${esc(line)}</p>
+    `).join("");
+
+    return `
+      <section class="entity-source-page">
+        <div class="entity-source-heading">
+          <h2>Source Page ${p.page}</h2>
+          <a href="#/page/${p.page}">Open source view →</a>
+        </div>
+        ${text}
+      </section>
+    `;
+  }).join("");
+
+  $("#content").innerHTML = `
+    <div class="hero entity-hero">
+      <a class="back-link" href="#/category/${category}">
+        ← ${esc(structuredCategoryTitle(category))}
+      </a>
+      <div class="eyebrow">${esc(structuredCategoryTitle(category))}</div>
+      <h1>${esc(entry.name)}</h1>
+      <p class="muted">
+        Structured entry · SRD 5.2.1 source pages ${entry.start}${entry.end !== entry.start ? "–" + entry.end : ""}
+      </p>
+      <div class="source-chip-row">${sourcePageLinks}</div>
+    </div>
+
+    <article class="rule-page entity-page">
+      <div class="entity-notice">
+        <strong>Source-backed entry</strong>
+        <span>
+          This page reorganizes the existing indexed source pages without
+          changing their text.
+        </span>
+      </div>
+
+      ${pageBlocks}
+    </article>
+  `;
+}
+
+function renderSectionFallback(category) {
+  const names = {
+    feats: "Feats",
+    equipment: "Equipment",
+    spells: "Spells",
+    monsters: "Monsters",
+    glossary: "Rules Glossary"
+  };
+  const label = names[category] || "Rules Reference";
+  const page = rules.pages.find(p => p.text.toLowerCase().includes(label.toLowerCase()));
+
+  if (page) {
+    location.hash = "#/page/" + page.page;
+  } else {
+    renderHome();
+  }
+}
+
 function render() {
   if (!rules) return;
 
@@ -79,6 +412,13 @@ function render() {
     renderSection(
       decodeURIComponent(hash.slice(10))
     );
+  }
+  else if (hash.startsWith("#/category/")) {
+    renderCategory(hash.slice(11));
+  }
+  else if (hash.startsWith("#/entity/")) {
+    const parts = hash.slice(9).split("/");
+    renderEntity(parts[0], parts[1]);
   }
   else if (hash === "#/homebrew") {
     renderHomebrew();
@@ -97,57 +437,68 @@ function render() {
 function renderHome() {
   renderSidebar();
 
-  const sections = [...new Set(
-    rules.pages.map(p => p.section)
-  )];
+  const categoryCards = [
+    ["classes", "Classes", "Browse all player classes."],
+    ["species", "Species", "Browse the character species in the SRD."],
+    ["backgrounds", "Backgrounds", "Browse the available SRD backgrounds."],
+  ];
 
   $("#content").innerHTML = `
     <div class="hero">
+      <div class="eyebrow">SRD 5.2.1 Reference</div>
       <h1>D&D Rules & Homebrew</h1>
       <p class="muted">
-        A searchable, GitHub Pages-friendly rules reference
-        built from SRD 5.2.1, with a local homebrew wiki.
+        A searchable, GitHub Pages-friendly rules reference with
+        structured character pages and a local homebrew wiki.
       </p>
     </div>
 
     <div class="rule-page">
+      <h2>Character</h2>
+      <div class="entity-grid compact">
+        ${categoryCards.map(([slug, title, description]) => `
+          <a class="entity-card" href="#/category/${slug}">
+            <div class="entity-card-title">${title}</div>
+            <div class="entity-card-meta">${description}</div>
+            <div class="entity-card-arrow">Browse →</div>
+          </a>
+        `).join("")}
+      </div>
+
       <h2>Rules Reference</h2>
-
-      <p>
-        The source document contains the core game rules,
-        character creation, classes, equipment, spells,
-        magic items, monsters, and more.
-      </p>
-
-      <p>
-        <strong>${rules.pages.length}</strong>
-        source pages are indexed below.
-      </p>
-
-      <h2>Browse</h2>
-
-      ${sections.map(s => `
-        <a class="search-result"
-           href="#/section/${encodeURIComponent(s)}">
-
-          <strong>${esc(s)}</strong>
-
-          <span>Browse this section</span>
+      <div class="quick-links">
+        <a class="search-result" href="#/category/feats">
+          <strong>Feats</strong>
+          <span>Structured category is next; source pages remain available now.</span>
         </a>
-      `).join("")}
+        <a class="search-result" href="#/category/equipment">
+          <strong>Equipment</strong>
+          <span>Browse the source-backed equipment section.</span>
+        </a>
+        <a class="search-result" href="#/category/spells">
+          <strong>Spells</strong>
+          <span>Browse the source-backed spell material.</span>
+        </a>
+        <a class="search-result" href="#/category/monsters">
+          <strong>Monsters</strong>
+          <span>Browse the source-backed creature material.</span>
+        </a>
+        <a class="search-result" href="#/category/glossary">
+          <strong>Rules Glossary</strong>
+          <span>Browse the glossary source material.</span>
+        </a>
+      </div>
+
+      <h2>Source Pages</h2>
+      <p>
+        ${rules.pages.length} source pages are indexed and remain available
+        as the authoritative page-by-page view.
+      </p>
 
       <h2>Homebrew</h2>
-
-      <p>
-        Create your own pages and keep them in this browser.
-        Use the export/import controls to move them between devices.
-      </p>
-
       <a class="search-result" href="#/homebrew">
         <strong>Open My Homebrew</strong>
-        <span>
-          Create, edit, export, and import custom pages.
-        </span>
+        <span>Create, edit, export, and import custom pages.</span>
       </a>
 
       <p class="muted">
@@ -200,123 +551,6 @@ function renderSection(section) {
   `;
 }
 
-function formatRuleText(raw) {
-  // Normalize the extracted PDF text before putting it into HTML.
-  // Some extracted versions can contain literal HTML-looking tags or
-  // the two characters "\n". Those are treated as plain source text.
-  let source = String(raw || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\n/g, "\n")
-    .replace(/<\/?strong>/gi, "")
-    .replace(/<\/?em>/gi, "")
-    .replace(/<\/?b>/gi, "")
-    .replace(/<\/?i>/gi, "");
-
-  const lines = source.replace(/\r/g, "").split("\n");
-  const out = [];
-  let paragraph = [];
-  let listType = null;
-  let listItems = [];
-
-  const flushParagraph = () => {
-    if (!paragraph.length) return;
-
-    const text = paragraph
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (text) {
-      out.push(`<p>${esc(text)}</p>`);
-    }
-
-    paragraph = [];
-  };
-
-  const flushList = () => {
-    if (!listItems.length) return;
-
-    const tag = listType === "ol" ? "ol" : "ul";
-
-    out.push(
-      `<${tag}>` +
-      listItems.map(item => `<li>${esc(item)}</li>`).join("") +
-      `</${tag}>`
-    );
-
-    listItems = [];
-    listType = null;
-  };
-
-  const getList = line => {
-    const text = line.trim();
-
-    if (/^[•●▪◦‣]\s+/.test(text)) {
-      return {
-        type: "ul",
-        text: text.replace(/^[•●▪◦‣]\s+/, "")
-      };
-    }
-
-    if (/^[-–—]\s+/.test(text)) {
-      return {
-        type: "ul",
-        text: text.replace(/^[-–—]\s+/, "")
-      };
-    }
-
-    const numbered = text.match(/^\d+[.)]\s+(.+)$/);
-
-    if (numbered) {
-      return {
-        type: "ol",
-        text: numbered[1]
-      };
-    }
-
-    return null;
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-
-    if (!line) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-
-    // Remove standalone PDF page numbers and repeated document headers.
-    if (
-      /^\d+$/.test(line) ||
-      /^system reference document 5\.2\.1$/i.test(line)
-    ) {
-      continue;
-    }
-
-    const list = getList(line);
-
-    if (list) {
-      flushParagraph();
-
-      if (listType && listType !== list.type) {
-        flushList();
-      }
-
-      listType = list.type;
-      listItems.push(list.text);
-      continue;
-    }
-
-    paragraph.push(line);
-  }
-
-  flushParagraph();
-  flushList();
-
-  return out.join("\n");
-}
-
 function renderPage(num) {
   const p = rules.pages.find(
     x => x.page === num
@@ -328,7 +562,14 @@ function renderPage(num) {
 
   renderSidebar(p.section);
 
-  const formatted = formatRuleText(p.text);
+  const text = p.text
+    .split("\n")
+    .map(line => `
+      <p class="sr-line">
+        ${esc(line)}
+      </p>
+    `)
+    .join("");
 
   $("#content").innerHTML = `
     <div class="hero">
@@ -349,7 +590,7 @@ function renderPage(num) {
         Source page ${p.page}
       </span>
 
-      ${formatted}
+      ${text}
 
     </article>
   `;
